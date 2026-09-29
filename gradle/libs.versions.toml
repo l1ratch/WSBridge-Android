@@ -1,0 +1,26 @@
+[versions]
+agp = "9.1.0"
+kotlin = "2.4.10"
+android-compileSdk = "36"
+android-minSdk = "24"
+android-targetSdk = "36"
+compose-bom = "2025.09.01"
+androidx-activity = "1.13.0"
+androidx-lifecycle = "2.9.4"
+androidx-core = "1.17.0"
+okhttp = "4.12.0"
+
+[libraries]
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-iconsExtended = { module = "androidx.compose.material:material-icons-extended" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-uiTooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-uiToolingPreview = { module = "androidx.compose.ui:ui-tooling-preview" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+
+[plugins]
+androidApplication = { id = "com.android.application", version.ref = "agp" }
+composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
