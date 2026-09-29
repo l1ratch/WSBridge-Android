@@ -1,5 +1,6 @@
 package com.l1ratch.wsbridge.tunnel
 
+import android.util.Log
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -8,9 +9,14 @@ import java.util.Locale
 /// поэтому весь IPC-слой iOS (Darwin notifications, JournalServer на
 /// loopback TCP, JournalReader, персист в файл контейнера) не нужен:
 /// приложение читает журнал напрямую.
+///
+/// Каждое событие зеркалится в logcat (tag WSBridge) — удалённый тестер
+/// снимает всю диагностику через `adb logcat -s WSBridge` или bugreport,
+/// даже если UI недоступен (краш, процесс убит).
 /// ponytail: только память. Персист предыдущего прогона (iOS loadPrevious)
 /// добавим, если понадобится post-mortem после убийства процесса системой.
 object EventLog {
+    private const val TAG = "WSBridge"
     private val entries = ArrayDeque<Pair<String, Long>>()
     private val fmt = SimpleDateFormat("HH:mm:ss", Locale.US)
 
@@ -29,6 +35,7 @@ object EventLog {
     fun append(name: String) {
         entries.addLast(name to System.currentTimeMillis())
         while (entries.size > 200) entries.removeFirst()
+        Log.i(TAG, name)
     }
 
     @Synchronized
