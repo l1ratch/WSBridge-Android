@@ -101,7 +101,7 @@ class TunnelService : VpnService() {
         EventLog.reset()
         EventLog.append("cfg:worker=${workerDomain ?: "-"}")
         EventLog.append("tunnel_start v${BuildConfig.VERSION_NAME}")
-        TunnelManager.setRunning(true)
+        TunnelManager.updateRunning(true)
 
         lwipExecutor = Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "wsb-lwip").apply { isDaemon = true }
@@ -236,7 +236,7 @@ class TunnelService : VpnService() {
     private fun stopTunnel() {
         if (stopped && tunIn == null) { stopSelf(); return }
         EventLog.append("tunnel_stop:user:pkts=$packetCount")
-        TunnelManager.setRunning(false)
+        TunnelManager.updateRunning(false)
         stopped = true
         lwipExecutor?.let { ex ->
             runCatching {
@@ -258,7 +258,7 @@ class TunnelService : VpnService() {
     override fun onRevoke() {
         // Система отзывает VPN (пользователь выключил в настройках / другой VPN).
         EventLog.append("tunnel_stop:revoked:pkts=$packetCount")
-        TunnelManager.setRunning(false)
+        TunnelManager.updateRunning(false)
         stopped = true
         runCatching { lwipExecutor?.shutdownNow() }
         lwipExecutor = null
@@ -269,7 +269,7 @@ class TunnelService : VpnService() {
 
     override fun onDestroy() {
         stopped = true
-        TunnelManager.setRunning(false)
+        TunnelManager.updateRunning(false)
         runCatching { lwipExecutor?.shutdownNow() }
         super.onDestroy()
     }

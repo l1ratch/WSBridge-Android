@@ -46,7 +46,7 @@ object TunnelManager {
         prefs = context.applicationContext.getSharedPreferences("wsbridge", Context.MODE_PRIVATE)
     }
 
-    fun setRunning(value: Boolean) {
+    fun updateRunning(value: Boolean) {
         running = value
     }
 
