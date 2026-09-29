@@ -32,6 +32,9 @@ jobs:
         with:
           validate-wrappers: false
 
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Unit tests + Build release APK
         env:
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}

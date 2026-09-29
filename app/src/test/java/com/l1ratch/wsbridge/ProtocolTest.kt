@@ -41,7 +41,7 @@ class ProtocolTest {
 
     @Test
     fun `init round-trip - production DC, padded intermediate`() {
-        val init = buildInit(dcIdx = 2, protoTag = 0xDDDDDDDD.toInt())
+        val init = buildInit(dcIdx = 2, protoTag = 0xDDDDDDDDL.toInt())
         val parsed = InitParser.parse(init)
         assertNotNull(parsed)
         assertEquals(2, parsed!!.dcId)
@@ -52,7 +52,7 @@ class ProtocolTest {
 
     @Test
     fun `init round-trip - media DC negative idx`() {
-        val init = buildInit(dcIdx = -4, protoTag = 0xEEEEEEEE.toInt(), seed = 7)
+        val init = buildInit(dcIdx = -4, protoTag = 0xEEEEEEEEL.toInt(), seed = 7)
         val parsed = InitParser.parse(init)!!
         assertEquals(4, parsed.dcId)
         assertTrue(parsed.isMedia)
@@ -60,7 +60,7 @@ class ProtocolTest {
 
     @Test
     fun `init round-trip - test DC`() {
-        val init = buildInit(dcIdx = 10002, protoTag = 0xEFEFEFEF.toInt(), seed = 9)
+        val init = buildInit(dcIdx = 10002, protoTag = 0xEFEFEFEFL.toInt(), seed = 9)
         val parsed = InitParser.parse(init)!!
         assertEquals(10002, parsed.dcId)
         assertTrue(parsed.isTestDC)
@@ -77,7 +77,7 @@ class ProtocolTest {
     fun `splitter frames intermediate packets`() {
         val key = ByteArray(32) { it.toByte() }
         val iv = ByteArray(16) { (it * 3).toByte() }
-        val protoTag = 0xEEEEEEEE
+        val protoTag = 0xEEEEEEEEL
 
         // plain-пакеты: [len32][payload]
         val payloads = listOf(
@@ -96,7 +96,7 @@ class ProtocolTest {
         sender.fastForward(64)
         val cipherBytes = sender.update(plainBytes)
 
-        val splitter = MsgSplitter(key, iv, protoTag.toLong() and 0xFFFFFFFFL)
+        val splitter = MsgSplitter(key, iv, protoTag)
 
         // Кормим разными кусками (TCP-поток не выровнен по пакетам)
         val parts = splitter.split(cipherBytes.copyOfRange(0, 10)) +
@@ -152,7 +152,7 @@ class ProtocolTest {
         sender.fastForward(64)
         val cipher = sender.update(plain)
 
-        val splitter = MsgSplitter(key, iv, 0xEEEEEEEE)
+        val splitter = MsgSplitter(key, iv, 0xEEEEEEEEL)
         assertEquals(0, splitter.split(cipher.copyOfRange(0, 50)).size)
         val rest = splitter.split(cipher.copyOfRange(50, cipher.size))
         assertEquals(1, rest.size)

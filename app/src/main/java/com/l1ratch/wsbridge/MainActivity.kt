@@ -122,9 +122,7 @@ fun App(onToggle: () -> Unit) {
         var screen by remember { mutableStateOf<Any>("main") }
         when (screen) {
             "main" -> MainScreen(onToggle = onToggle, navigate = { screen = it })
-            "dns" -> DnsScreen(navigate = { screen = it })
             "dnsManage" -> DnsManageScreen(navigate = { screen = it })
-            "dnsEdit" -> DnsEditScreen(editing = null, navigate = { screen = it })
             "worker" -> WorkerScreen(navigate = { screen = it })
             "journal" -> JournalScreen(navigate = { screen = it })
             "about" -> AboutScreen(navigate = { screen = it })
