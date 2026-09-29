@@ -143,7 +143,11 @@ class WSClient(private val tag: String = "") {
             .build()
         // newBuilder дёшев: dispatcher и connection pool общие.
         val epClient = if (ep.overrideIp != null) {
-            client.newBuilder().dns(Dns { listOf(InetAddress.getByName(ep.overrideIp)) }).build()
+            val ip = ep.overrideIp
+            client.newBuilder().dns(object : Dns {
+                override fun lookup(hostname: String): List<InetAddress> =
+                    listOf(InetAddress.getByName(ip))
+            }).build()
         } else {
             client
         }

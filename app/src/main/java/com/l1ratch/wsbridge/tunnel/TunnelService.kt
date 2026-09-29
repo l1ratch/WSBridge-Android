@@ -80,7 +80,7 @@ class TunnelService : VpnService() {
                 // DNSForwarder (lwIP собран без UDP). На 24–28 DNS-запросы VPN-сети
                 // тоже приходят в TUN — форвардер их обрабатывает и без этого.
                 if (Build.VERSION.SDK_INT >= 29 && dns.servers.isNotEmpty()) {
-                    setDnsServer(dns.servers[0])
+                    addDnsServer(dns.servers[0])
                 }
             }
             // Свои WS-соединения идут на 149.154.* — ВНУТРИ маршрутов туннеля.
