@@ -47,11 +47,13 @@ class TunnelService : VpnService() {
     private var byteCount = 0L
 
     // lwipQueue: единственный поток, которому разрешено трогать lwIP и sessions.
-    private var lwipExecutor: ScheduledExecutorService? = null
+    @Volatile private var lwipExecutor: ScheduledExecutorService? = null
     private var tunIn: FileInputStream? = null
     private var tunOut: FileOutputStream? = null
+    private var dnsFd: android.os.ParcelFileDescriptor? = null
     private var dnsForwarder: DNSForwarder? = null
     @Volatile private var stopped = false
+    @Volatile private var starting = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // START_NOT_STICKY: после убийства процесса VPN сам не воскрешаем
@@ -62,13 +64,41 @@ class TunnelService : VpnService() {
             stopTunnel()
             return START_NOT_STICKY
         }
-        if (tunIn != null) return START_NOT_STICKY // уже работает
+        if (starting || tunIn != null) return START_NOT_STICKY // уже работает или стартует
 
         val workerDomain = TunnelManager.workerDomain.trim().takeIf { it.isNotEmpty() }
         val dns = TunnelManager.selectedDNS
 
+        // startForeground обязан успеть в 5с после startForegroundService —
+        // делаем сразу и на main-потоке (это быстро).
         startInForeground(dns.name)
 
+        // ВСЁ остальное — в фоновом потоке. Сервис и UI живут в одном процессе,
+        // а establish() — это binder-IPC в system_server с перенастройкой
+        // маршрутов: заблокировав main-поток, он морозит весь интерфейс, и
+        // кнопка «выключить» умирает вместе с ним (так и было).
+        starting = true
+        stopped = false
+        // Оптимистично: кнопка сразу переходит в «включено» и тап по ней шлёт
+        // ACTION_STOP, даже если establish ещё висит. Без этого при зависшем
+        // старте running оставался false и выключить туннель было нельзя.
+        TunnelManager.updateRunning(true)
+        Thread({
+            try {
+                startTunnel(workerDomain, dns)
+            } catch (t: Throwable) {
+                Log.e(TAG, "tunnel start failed", t)
+                EventLog.append("start_fail:${t.javaClass.simpleName}:${t.message}")
+                starting = false
+                TunnelManager.updateRunning(false)
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }, "wsb-start").start()
+        return START_NOT_STICKY
+    }
+
+    private fun startTunnel(workerDomain: String?, dns: TunnelManager.DNSConfig) {
         val tun = Builder()
             .setSession("WSBridge")
             .setMtu(1500)
@@ -90,14 +120,24 @@ class TunnelService : VpnService() {
 
         if (tun == null) {
             Log.e(TAG, "establish() failed (consent revoked?)")
+            EventLog.append("start_fail:establish_null")
+            starting = false
+            TunnelManager.updateRunning(false)
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
-            return START_NOT_STICKY
+            return
+        }
+        if (stopped) { // выключили, пока длился establish
+            runCatching { tun.close() }
+            starting = false
+            stopSelf()
+            return
         }
 
+        dnsFd = tun
         tunIn = FileInputStream(tun.fileDescriptor)
         tunOut = FileOutputStream(tun.fileDescriptor)
 
-        stopped = false
         EventLog.reset()
         EventLog.append("cfg:worker=${workerDomain ?: "-"}")
         EventLog.append("tunnel_start v${BuildConfig.VERSION_NAME}")
@@ -106,12 +146,13 @@ class TunnelService : VpnService() {
         lwipExecutor = Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "wsb-lwip").apply { isDaemon = true }
         }
-        dnsForwarder = if (dns.servers.isNotEmpty()) DNSForwarder(dns.servers) { pkt -> writePacket(pkt) } else null
+        dnsForwarder =
+            if (dns.servers.isNotEmpty()) DNSForwarder(dns.servers) { pkt -> writePacket(pkt) } else null
 
         setupLWIP(workerDomain)
         startTimers()
         readLoop()
-        return START_NOT_STICKY
+        starting = false
     }
 
     private fun setupLWIP(workerDomain: String?) {
@@ -248,11 +289,18 @@ class TunnelService : VpnService() {
             ex.shutdown()
         }
         lwipExecutor = null
-        runCatching { tunIn?.close() }
-        runCatching { tunOut?.close() }
-        tunIn = null; tunOut = null
+        closeTun()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    /// Закрываем именно ParcelFileDescriptor: его close() гарантированно будит
+    /// поток, заблокированный в read(fd) (стрим-обёртки — нет).
+    private fun closeTun() {
+        runCatching { tunIn?.close() }
+        runCatching { tunOut?.close() }
+        runCatching { dnsFd?.close() }
+        tunIn = null; tunOut = null; dnsFd = null
     }
 
     override fun onRevoke() {
@@ -262,8 +310,7 @@ class TunnelService : VpnService() {
         stopped = true
         runCatching { lwipExecutor?.shutdownNow() }
         lwipExecutor = null
-        runCatching { tunIn?.close() }
-        tunIn = null; tunOut = null
+        closeTun()
         stopSelf()
     }
 
@@ -271,6 +318,7 @@ class TunnelService : VpnService() {
         stopped = true
         TunnelManager.updateRunning(false)
         runCatching { lwipExecutor?.shutdownNow() }
+        closeTun()
         super.onDestroy()
     }
 }
