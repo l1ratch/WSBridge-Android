@@ -70,10 +70,12 @@ import androidx.compose.ui.graphics.Brush.Companion.radialGradient
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.l1ratch.wsbridge.tunnel.TunnelService
@@ -119,6 +121,10 @@ private val BottomLight = Color(0xFFD5DAE4)
 private val DarkBg = Color(0xFF0D1526)
 private val LightBg = Color(0xFFE8EDF5)
 
+/// Радиус Brush.radialGradient задаётся в пикселях, а не в dp.
+@Composable
+private fun px(dp: Dp): Float = with(LocalDensity.current) { dp.toPx() }
+
 @Composable
 fun App(onToggle: () -> Unit) {
     val dark = isSystemInDarkTheme()
@@ -159,7 +165,7 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
                             (if (running) Green else Indigo).copy(alpha = if (dark) 0.55f else 0.45f),
                             Color.Transparent,
                         ),
-                        radius = 300.dp,
+                        radius = px(300.dp),
                     )
                 )
         )
@@ -175,7 +181,7 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
                             (if (dark) BottomDark else BottomLight).copy(alpha = if (dark) 0.85f else 0.6f),
                             Color.Transparent,
                         ),
-                        radius = 340.dp,
+                        radius = px(340.dp),
                     )
                 )
         )
@@ -259,7 +265,7 @@ private fun BoltButton(running: Boolean, onToggle: () -> Unit) {
                         (if (running) Green else Color.Gray).copy(alpha = if (running) 0.35f else 0.10f),
                         Color.Transparent,
                     ),
-                    radius = 120.dp,
+                    radius = px(120.dp),
                 )
             )
             .clickable(onClick = onToggle),
