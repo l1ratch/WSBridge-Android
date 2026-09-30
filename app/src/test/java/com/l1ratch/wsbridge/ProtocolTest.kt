@@ -72,6 +72,16 @@ class ProtocolTest {
         assertNull(InitParser.parse(ByteArray(63)))
     }
 
+    /// Причина отказа должна отличать TLS-клиента (Telegram Web, браузер) от
+    /// прочего мусора: иначе в журнале сотня одинаковых bad_init без причины.
+    @Test
+    fun `describe names the rejected transport`() {
+        assertEquals("tls", InitParser.describe(byteArrayOf(0x16, 0x03, 0x01, 0x02)))
+        assertEquals("tls", InitParser.describe(byteArrayOf(0x16, 0x03)))
+        assertEquals("short", InitParser.describe(byteArrayOf(0x16)))
+        assertEquals("raw:efefef", InitParser.describe(byteArrayOf(0xEF.toByte(), 0xEF.toByte(), 0xEF.toByte())))
+    }
+
     /// Сплиттер: шифрпоток intermediate-пакетов режется ровно по границам.
     @Test
     fun `splitter frames intermediate packets`() {

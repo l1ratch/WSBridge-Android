@@ -32,14 +32,13 @@ class TunnelSession(
     /// Данные от клиента (Telegram) через lwIP. Вызывается на lwip-потоке.
     fun handleData(data: ByteArray) {
         EventLog.rxBytes += data.size
-        if (!upHeadLogged) {
-            upHeadLogged = true
-            val head = data.take(96).joinToString("") { "%02x".format(it) }
-            postEvent("uphead:c$connId:${data.size}:$head")
-        }
         // Pipe-режим: собственный CF worker пользователя. Без init-парсинга и
         // сплиттера — сырой поток в WS, worker домостит его до DC:443.
         if (workerDomain != null) {
+            if (!upHeadLogged) {
+                upHeadLogged = true
+                logHead(data)
+            }
             if (!wsConnected) startPipe()
             forwardToWS(data)
             return
@@ -51,18 +50,31 @@ class TunnelSession(
                 val parsed = InitParser.parse(initData)
                 if (parsed != null) {
                     initParsed = true
+                    if (!upHeadLogged) {
+                        upHeadLogged = true
+                        logHead(initData)
+                    }
                     startWS(parsed)
                     if (initBuffer.size > InitParser.handshakeLen) {
                         forwardToWS(initBuffer.copyOfRange(InitParser.handshakeLen, initBuffer.size))
                     }
                 } else {
-                    postEvent("c${connId}:bad_init")
+                    // Не MTProto (обычно TLS от Telegram Web) — сначала причина,
+                    // потом в журнал; хекс-дамп здесь только мешал бы читать лог.
+                    postEvent("c${connId}:bad_init:${InitParser.describe(initData)}")
                     bridge.nativeClose(connId)
                 }
             }
         } else {
             forwardToWS(data)
         }
+    }
+
+    /// Хекс первых байт — только для принятого соединения, не для отброшенных:
+    /// иначе журнал из 200 строк состоит из дампов и причину отказа не видно.
+    private fun logHead(data: ByteArray) {
+        val head = data.take(48).joinToString("") { "%02x".format(it) }
+        postEvent("uphead:c$connId:${data.size}:$head")
     }
 
     private fun startWS(parsed: InitParser.ParsedInit) {

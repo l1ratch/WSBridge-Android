@@ -49,4 +49,14 @@ object InitParser {
 
         return ParsedInit(dcId, isMedia, isTestDC, protoTag, key, iv)
     }
+
+    /// Что реально пришло вместо MTProto init. TLS-клиент (0x16 0x03 в начале) —
+    /// это WebSocket-транспорт Telegram Web: сплайсинг MTProto его не понимает,
+    /// и без этой метки в журнале остаётся только голый bad_init.
+    fun describe(head: ByteArray): String {
+        if (head.size < 2) return "short"
+        val a = head[0].toInt() and 0xFF
+        val b = head[1].toInt() and 0xFF
+        return if (a == 0x16 && b == 0x03) "tls" else String.format("raw:%02x%02x", a, b)
+    }
 }
