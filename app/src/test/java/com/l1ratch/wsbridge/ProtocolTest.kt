@@ -79,7 +79,7 @@ class ProtocolTest {
         assertEquals("tls", InitParser.describe(byteArrayOf(0x16, 0x03, 0x01, 0x02)))
         assertEquals("tls", InitParser.describe(byteArrayOf(0x16, 0x03)))
         assertEquals("short", InitParser.describe(byteArrayOf(0x16)))
-        assertEquals("raw:efefef", InitParser.describe(byteArrayOf(0xEF.toByte(), 0xEF.toByte(), 0xEF.toByte())))
+        assertEquals("raw:efef", InitParser.describe(byteArrayOf(0xEF.toByte(), 0xEF.toByte(), 0xEF.toByte())))
     }
 
     /// Сплиттер: шифрпоток intermediate-пакетов режется ровно по границам.
