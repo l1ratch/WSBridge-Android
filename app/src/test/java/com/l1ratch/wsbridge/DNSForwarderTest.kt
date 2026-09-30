@@ -64,7 +64,7 @@ class DNSForwarderTest {
     fun `ip header length and checksum are valid`() {
         val out = wrap(ByteArray(16) { 0x7F })
         assertEquals(0x45, out[0].toInt() and 0xFF)   // IPv4, IHL=5
-        assertEquals(8, out[9].toInt())              // протокол UDP
+        assertEquals(17, out[9].toInt())             // протокол UDP
         assertEquals(64, out[8].toInt())             // TTL
         assertEquals(out.size, be16(out, 2))         // total length
         assertEquals(8 + 16, be16(out, 24))          // UDP length
