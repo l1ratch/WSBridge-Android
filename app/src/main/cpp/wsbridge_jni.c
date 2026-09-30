@@ -4,6 +4,7 @@
 // в Kotlin), поэтому AttachCurrentThread — страховка, а не рабочий путь.
 #include <jni.h>
 #include <android/log.h>
+#include <stdio.h>
 #include "lwip_bridge.h"
 
 #define TAG "WSBridge"
@@ -11,7 +12,7 @@
 
 static JavaVM *g_jvm = NULL;
 static jclass g_cls = NULL; // LwipNative (global ref)
-static jmethodID m_output, m_accept, m_recv, m_close, m_sent;
+static jmethodID m_output, m_accept, m_recv, m_close, m_sent, m_log;
 
 static JNIEnv *get_env(int *attached) {
     JNIEnv *env = NULL;
@@ -44,6 +45,21 @@ static void cb_accept(uint32_t conn_id, void *ctx) {
     int attached; JNIEnv *env = get_env(&attached);
     if (!env) return;
     uint32_t dc_ip = lwip_bridge_get_dst_ip(conn_id);
+    // Порт iOS-диагностики (LWIPBridge.swift): dc_ip == 0 означает промах NAT-lookup,
+    // и без этой строки в журнале остаётся голое accept:c без причины.
+    if (dc_ip == 0) {
+        uint32_t ki = 0, dc = 0, ni = 0, nd = 0; uint16_t kp = 0, np = 0;
+        lwip_bridge_dbg_nat(&ki, &kp, &dc, &ni, &np, &nd);
+        char buf[160];
+        snprintf(buf, sizeof(buf), "natmiss:key=%08x:%u dc=%08x nat0=%08x:%u->%08x",
+                 ki, kp, dc, ni, np, nd);
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "%s", buf);
+        jstring msg = (*env)->NewStringUTF(env, buf);
+        if (msg) {
+            (*env)->CallStaticVoidMethod(env, g_cls, m_log, msg);
+            (*env)->DeleteLocalRef(env, msg);
+        }
+    }
     (*env)->CallStaticVoidMethod(env, g_cls, m_accept, (jlong)conn_id, (jlong)dc_ip);
     detach_if(attached);
 }
@@ -90,7 +106,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_recv   = (*env)->GetStaticMethodID(env, g_cls, "onRecv", "(J[B)V");
     m_close  = (*env)->GetStaticMethodID(env, g_cls, "onClose", "(JI)V");
     m_sent   = (*env)->GetStaticMethodID(env, g_cls, "onSent", "(J)V");
-    if (!m_output || !m_accept || !m_recv || !m_close || !m_sent) {
+    m_log    = (*env)->GetStaticMethodID(env, g_cls, "log", "(Ljava/lang/String;)V");
+    if (!m_output || !m_accept || !m_recv || !m_close || !m_sent || !m_log) {
         LOGE("LwipNative callback method not found");
         return JNI_ERR;
     }

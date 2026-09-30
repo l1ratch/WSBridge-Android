@@ -35,4 +35,7 @@ object LwipNative {
     @JvmStatic fun onRecv(connId: Long, data: ByteArray) { handler?.onRecv(connId, data) }
     @JvmStatic fun onClose(connId: Long, reason: Int) { handler?.onClose(connId, reason) }
     @JvmStatic fun onSent(connId: Long) { handler?.onSent(connId) }
+
+    /// Служебная запись из C в журнал (natmiss-диагностика, порт iOS).
+    @JvmStatic fun log(msg: String) { EventLog.append(msg) }
 }
