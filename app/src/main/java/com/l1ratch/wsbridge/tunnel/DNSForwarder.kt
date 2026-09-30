@@ -54,7 +54,9 @@ class DNSForwarder(
     }
 
     /// Оборачивает DNS-ответ обратно в IP/UDP пакет (swap src/dst).
-    private fun wrapResponse(response: ByteArray, original: ByteArray, ihl: Int): ByteArray {
+    /// internal, а не private: это чистая сборка байтов, и единственное место, где
+    /// ошибка поля молча роняет весь DNS-ответ — проверяется юнит-тестом.
+    internal fun wrapResponse(response: ByteArray, original: ByteArray, ihl: Int): ByteArray {
         val totalLen = 20 + 8 + response.size
         val udpLen = 8 + response.size
         val out = ByteArray(totalLen)
