@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -52,6 +53,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -62,8 +64,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.radialGradient
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -109,6 +113,9 @@ class MainActivity : ComponentActivity() {
 }
 
 private val Green = Color(0xFF17A05E)
+private val Indigo = Color(0xFF1E3A6E)
+private val BottomDark = Color(0xFF040810)
+private val BottomLight = Color(0xFFD5DAE4)
 private val DarkBg = Color(0xFF0D1526)
 private val LightBg = Color(0xFFE8EDF5)
 
@@ -136,109 +143,160 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
     val running = TunnelManager.running
     var showMenu by remember { mutableStateOf(false) }
     var showDns by remember { mutableStateOf(false) }
+    val dark = isSystemInDarkTheme()
 
-    Scaffold(
-        topBar = {
-            Box(Modifier.fillMaxWidth()) {
-                // Меню якоряется на коробке вокруг самой кнопки, а не на всём topBar:
-                // иначе popup считает якорём полноширинный Box и открывается слева.
-                Box(Modifier.align(Alignment.CenterEnd)) {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Меню")
-                    }
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Журнал туннеля") },
-                            leadingIcon = { Icon(Icons.Default.Info, null) },
-                            onClick = { showMenu = false; navigate("journal") },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("DNS-серверы") },
-                            leadingIcon = { Icon(Icons.Default.NetworkWifi, null) },
-                            onClick = { showMenu = false; navigate("dnsManage") },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("CF Worker") },
-                            leadingIcon = { Icon(Icons.Default.Cloud, null) },
-                            onClick = { showMenu = false; navigate("worker") },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("О программе") },
-                            leadingIcon = { Icon(Icons.Default.Info, null) },
-                            onClick = { showMenu = false; navigate("about") },
-                        )
-                    }
-                }
-            }
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            // Молния — и индикатор, и кнопка: тап включает/выключает.
-            Box(
-                modifier = Modifier
-                    .size(220.dp)
-                    // Фон ДО тени: иначе shadow() рисует ореол вокруг пустой
-                    // коробки — читается как «непонятная обводка», а не как кнопка.
-                    .background(
-                        if (running) Green.copy(alpha = 0.18f)
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                        CircleShape
+    Box(Modifier.fillMaxSize()) {
+        // Верхнее свечение (порт ContentView.swift): зелёное при работе, индиго в покое.
+        // Радиальный градиент вместо Modifier.blur — тот же вид, без дорогого размытия.
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .size(560.dp)
+                .offset(y = (-240).dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            (if (running) Green else Indigo).copy(alpha = if (dark) 0.55f else 0.45f),
+                            Color.Transparent,
+                        ),
+                        radius = 300.dp,
                     )
-                    .shadow(if (running) 40.dp else 8.dp, CircleShape,
-                        ambientColor = if (running) Green else Color.Black,
-                        spotColor = if (running) Green else Color.Black)
-                    .clickable(onClick = onToggle),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Default.Bolt,
-                    contentDescription = if (running) "Выключить туннель" else "Включить туннель",
-                    tint = if (running) Green else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                    modifier = Modifier.size(140.dp),
+                )
+        )
+        // Нижняя глубина: тёмная тема — почти чёрный, светлая — тёплый серый.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .size(700.dp)
+                .offset(y = 220.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            (if (dark) BottomDark else BottomLight).copy(alpha = if (dark) 0.85f else 0.6f),
+                            Color.Transparent,
+                        ),
+                        radius = 340.dp,
+                    )
+                )
+        )
+
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = { },
+                    actions = {
+                        // Меню якоряется на коробке вокруг кнопки, иначе popup
+                        // открывается от левого края, а не под ⋮.
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "Меню")
+                            }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Журнал туннеля") },
+                                    leadingIcon = { Icon(Icons.Default.Info, null) },
+                                    onClick = { showMenu = false; navigate("journal") },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("DNS-серверы") },
+                                    leadingIcon = { Icon(Icons.Default.NetworkWifi, null) },
+                                    onClick = { showMenu = false; navigate("dnsManage") },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("CF Worker") },
+                                    leadingIcon = { Icon(Icons.Default.Cloud, null) },
+                                    onClick = { showMenu = false; navigate("worker") },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("О программе") },
+                                    leadingIcon = { Icon(Icons.Default.Info, null) },
+                                    onClick = { showMenu = false; navigate("about") },
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 )
             }
+        ) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    BoltButton(running, onToggle)
+                    Spacer(Modifier.height(20.dp))
+                    DnsPill { showDns = true }
+                }
 
-            Spacer(Modifier.height(24.dp))
-
-            // DNS-строка: название выбранного DNS + точка-индикатор.
-            Row(
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(50))
-                    .clickable { showDns = true }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Default.NetworkWifi, null, Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text(TunnelManager.selectedDNS.name, style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.size(8.dp))
-                Box(
-                    Modifier
-                        .size(8.dp)
-                        .background(
-                            if (TunnelManager.selectedDNS.servers.isEmpty()) Color.Gray else Green,
-                            CircleShape
-                        )
+                // Версия — по нижнему краю, как на iOS, а не в середине колонки.
+                Text(
+                    "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · © 2026 l1ratch",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                 )
             }
-
-            Spacer(Modifier.height(48.dp))
-
-            Text(
-                "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · © 2026 l1ratch",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-            )
         }
     }
 
     if (showDns) DnsSheet(onDismiss = { showDns = false }, navigate = navigate)
+}
+
+/// Молния — и индикатор, и кнопка. Ореол сделан радиальным градиентом, а не
+/// shadow(): тень от CircleShape на части устройств рисуется многоугольником,
+/// и кнопка выглядит как обрезанный октагон.
+@Composable
+private fun BoltButton(running: Boolean, onToggle: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(240.dp)
+            .background(
+                Brush.radialGradient(
+                    listOf(
+                        (if (running) Green else Color.Gray).copy(alpha = if (running) 0.35f else 0.10f),
+                        Color.Transparent,
+                    ),
+                    radius = 120.dp,
+                )
+            )
+            .clickable(onClick = onToggle),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Default.Bolt,
+            contentDescription = if (running) "Выключить туннель" else "Включить туннель",
+            tint = if (running) Green else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+            modifier = Modifier.size(170.dp),
+        )
+    }
+}
+
+@Composable
+private fun DnsPill(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.NetworkWifi, null, Modifier.size(20.dp))
+        Spacer(Modifier.size(10.dp))
+        Text(TunnelManager.selectedDNS.name, style = MaterialTheme.typography.bodyLarge)
+        Spacer(Modifier.size(10.dp))
+        Box(
+            Modifier
+                .size(10.dp)
+                .background(
+                    if (TunnelManager.selectedDNS.servers.isEmpty()) Color.Gray else Green,
+                    CircleShape
+                )
+        )
+    }
 }
 
 /// Быстрый выбор DNS (лист поверх главного экрана).
