@@ -151,7 +151,10 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
     var showDns by remember { mutableStateOf(false) }
     val dark = isSystemInDarkTheme()
 
-    Box(Modifier.fillMaxSize()) {
+    // Фон рисуем явно: Scaffold прозрачный (иначе перекроет свечения), а окно
+    // в XML-теме чёрное — без этой заливки светлая тема даёт чёрный экран с
+    // невидимым тёмным текстом.
+    Box(Modifier.fillMaxSize().background(if (dark) DarkBg else LightBg)) {
         // Верхнее свечение (порт ContentView.swift): зелёное при работе, индиго в покое.
         // Радиальный градиент вместо Modifier.blur — тот же вид, без дорогого размытия.
         Box(
