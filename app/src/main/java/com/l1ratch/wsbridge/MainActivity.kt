@@ -140,30 +140,34 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
     Scaffold(
         topBar = {
             Box(Modifier.fillMaxWidth()) {
-                IconButton(onClick = { showMenu = true }, modifier = Modifier.align(Alignment.CenterEnd)) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Меню")
-                }
-                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Журнал туннеля") },
-                        leadingIcon = { Icon(Icons.Default.Info, null) },
-                        onClick = { showMenu = false; navigate("journal") },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("DNS-серверы") },
-                        leadingIcon = { Icon(Icons.Default.NetworkWifi, null) },
-                        onClick = { showMenu = false; navigate("dnsManage") },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("CF Worker") },
-                        leadingIcon = { Icon(Icons.Default.Cloud, null) },
-                        onClick = { showMenu = false; navigate("worker") },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("О программе") },
-                        leadingIcon = { Icon(Icons.Default.Info, null) },
-                        onClick = { showMenu = false; navigate("about") },
-                    )
+                // Меню якоряется на коробке вокруг самой кнопки, а не на всём topBar:
+                // иначе popup считает якорём полноширинный Box и открывается слева.
+                Box(Modifier.align(Alignment.CenterEnd)) {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Меню")
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Журнал туннеля") },
+                            leadingIcon = { Icon(Icons.Default.Info, null) },
+                            onClick = { showMenu = false; navigate("journal") },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("DNS-серверы") },
+                            leadingIcon = { Icon(Icons.Default.NetworkWifi, null) },
+                            onClick = { showMenu = false; navigate("dnsManage") },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("CF Worker") },
+                            leadingIcon = { Icon(Icons.Default.Cloud, null) },
+                            onClick = { showMenu = false; navigate("worker") },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("О программе") },
+                            leadingIcon = { Icon(Icons.Default.Info, null) },
+                            onClick = { showMenu = false; navigate("about") },
+                        )
+                    }
                 }
             }
         }
@@ -179,6 +183,13 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
             Box(
                 modifier = Modifier
                     .size(220.dp)
+                    // Фон ДО тени: иначе shadow() рисует ореол вокруг пустой
+                    // коробки — читается как «непонятная обводка», а не как кнопка.
+                    .background(
+                        if (running) Green.copy(alpha = 0.18f)
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                        CircleShape
+                    )
                     .shadow(if (running) 40.dp else 8.dp, CircleShape,
                         ambientColor = if (running) Green else Color.Black,
                         spotColor = if (running) Green else Color.Black)
