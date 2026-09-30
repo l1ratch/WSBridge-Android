@@ -68,10 +68,10 @@ class DNSForwarderTest {
         assertEquals(64, out[8].toInt())             // TTL
         assertEquals(out.size, be16(out, 2))         // total length
         assertEquals(8 + 16, be16(out, 24))          // UDP length
-        // Контрольная сумма IPheader: пересчёт по всему заголовку даёт ноль.
-        val copy = out.copyOf()
-        copy[10] = 0; copy[11] = 0
-        assertEquals(0, DNSForwarder.checksum(copy, 0, ihl))
+        // Свойство IP-заголовка: пересчёт контрольной суммы по пакету как есть
+        // даёт ноль. (Обнулять поле checksum нужно только при ВЫЧИСЛЕНИИ суммы —
+        // проверка идёт по собранному пакету, иначе всегда возвращается сама сумма.)
+        assertEquals(0, DNSForwarder.checksum(out, 0, ihl))
     }
 
     @Test
