@@ -191,6 +191,10 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
 
         Scaffold(
             containerColor = Color.Transparent,
+            // contentColorFor(Transparent) не находит пару и отдаёт Unspecified,
+            // тогда LocalContentColor остаётся дефолтным чёрным — и в тёмной теме
+            // подпись DNS и иконка рисуются чёрным по тёмному. Задаём явно.
+            contentColor = MaterialTheme.colorScheme.onBackground,
             topBar = {
                 TopAppBar(
                     title = { },
