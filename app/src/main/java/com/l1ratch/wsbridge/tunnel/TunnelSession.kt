@@ -78,17 +78,26 @@ class TunnelSession(
     }
 
     private fun startWS(parsed: InitParser.ParsedInit) {
-        postEvent("init:conn${connId}:DC${parsed.dcId}")
+        // DC берётся из адреса, к которому подключился клиент: в init на Android
+        // его нет (см. TelegramDCs.dcByIp). Раньше читали init — получали
+        // kws26369.web.telegram.org и NXDOMAIN на каждом эндпоинте.
+        val dstIp = formatIp(dcIP)
+        val dc = TelegramDCs.resolve(dstIp, parsed.dcId, parsed.isMedia)
+        postEvent("init:conn${connId}:DC${dc.dc}${if (dc.fromIp) ":dst=$dstIp" else ":miss:$dstIp"}")
+
         splitter = MsgSplitter(parsed.key, parsed.iv, parsed.protoTag)
 
         // 64-байтовый init — первый WS-фрейм. WSClient шлёт его на каждом
         // эндпоинте каскада, поэтому передаём сюда, а не отдельным send().
-        val initData = initBuffer.copyOfRange(0, InitParser.handshakeLen)
+        // dc_idx приводим к выбранному DC: гейтвей сверяет его с hostname.
+        val initData = InitParser.rewriteDc(
+            initBuffer.copyOfRange(0, InitParser.handshakeLen), parsed.key, parsed.iv, dc.dc
+        )
 
         val ws = WSClient(tag = "c$connId")
         this.ws = ws
         ws.connect(
-            dc = parsed.dcId, isMedia = parsed.isMedia, isTestDC = parsed.isTestDC,
+            dc = dc.dc, isMedia = dc.isMedia, isTestDC = dc.isTest,
             initFrame = initData,
             onMessage = { data -> handleWSData(data) },
             onClose = { handleWSClose() },

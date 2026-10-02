@@ -59,4 +59,25 @@ object InitParser {
         val b = head[1].toInt() and 0xFF
         return if (a == 0x16 && b == 0x03) "tls" else String.format("raw:%02x%02x", a, b)
     }
+
+    /// Переписывает dc_idx в init, не ломая шифр потока.
+    /// Хвост [56:64) зашифрован CTR-потоком с позиции 56, поэтому правка —
+    /// это XOR с тем же байтом keystream: enc = plain ^ ks, значит
+    /// new_enc = new_plain ^ ks = new_plain ^ plain ^ enc.
+    /// Ключ и IV лежат в [8:56) и не трогаются — шифры клиента не страдают.
+    /// Нужно потому, что Telegram Android оставляет в [60:62) случайные байты
+    /// (dc_idx пишется только при MTProxy с секретом), а гейтвей ждёт
+    /// согласованный с hostname дата-центр.
+    fun rewriteDc(init: ByteArray, key: ByteArray, iv: ByteArray, dc: Int): ByteArray {
+        val out = init.copyOf()
+        val dec = AESCTR(key, iv).update(init.copyOfRange(0, handshakeLen))
+        val value = dc.toShort().toInt()
+        for (i in 0 until 2) {
+            val plain = dec[dcIdxPos + i].toInt() and 0xFF
+            val enc = out[dcIdxPos + i].toInt() and 0xFF
+            val next = (value shr (8 * i)) and 0xFF
+            out[dcIdxPos + i] = (next xor plain xor enc).toByte()
+        }
+        return out
+    }
 }

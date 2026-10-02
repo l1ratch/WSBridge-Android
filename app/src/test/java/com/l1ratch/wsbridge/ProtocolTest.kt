@@ -3,6 +3,7 @@ package com.l1ratch.wsbridge
 import com.l1ratch.wsbridge.tunnel.AESCTR
 import com.l1ratch.wsbridge.tunnel.InitParser
 import com.l1ratch.wsbridge.tunnel.MsgSplitter
+import com.l1ratch.wsbridge.tunnel.TelegramDCs
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -175,4 +176,93 @@ class ProtocolTest {
         ((this shr 16) and 0xFF).toByte(),
         ((this shr 24) and 0xFF).toByte(),
     )
+
+    // --- Определение DC ---
+    // Telegram Android не пишет dc_idx в init при прямом соединении (только при
+    // MTProxy с секретом): в логах тестера DC26369, DC307 — случайные байты.
+    // Поэтому DC берётся из адреса, который набирал клиент.
+
+    @Test
+    fun `resolve takes DC from destination address`() {
+        // 149.154.167.51 — DC2 из BuiltInDc официального клиента.
+        val d = TelegramDCs.resolve("149.154.167.51", parsedDc = 26369, parsedMedia = true)
+        assertEquals(2, d.dc)
+        assertTrue(d.fromIp)
+        // Гейтвей ждёт kws2, а не kws26369 — media-флаг из мусорного init не берём.
+        assertEquals(false, d.isMedia)
+    }
+
+    @Test
+    fun `resolve covers all five production DCs`() {
+        val expected = mapOf(
+            "149.154.175.50" to 1, "149.154.167.51" to 2, "149.154.175.100" to 3,
+            "149.154.167.91" to 4, "149.154.171.5" to 5,
+        )
+        for ((ip, dc) in expected) {
+            val d = TelegramDCs.resolve(ip, parsedDc = 0, parsedMedia = false)
+            assertEquals("DC for $ip", dc, d.dc)
+            assertTrue(d.fromIp)
+        }
+    }
+
+    @Test
+    fun `resolve marks test DCs`() {
+        val d = TelegramDCs.resolve("149.154.167.40", parsedDc = 0, parsedMedia = false)
+        assertEquals(2, d.dc)
+        assertTrue("test IP must route to /apiws_test", d.isTest)
+    }
+
+    @Test
+    fun `resolve falls back to sane parsed DC then default`() {
+        // Неизвестный адрес + правдоподобный DC из init — берём init.
+        val ok = TelegramDCs.resolve("10.0.0.1", parsedDc = 3, parsedMedia = false)
+        assertEquals(3, ok.dc)
+        assertEquals(false, ok.fromIp)
+
+        // Неизвестный адрес + мусорный DC (как в логе тестера) — дефолт DC2,
+        // а не kws26369.web.telegram.org с NXDOMAIN.
+        val junk = TelegramDCs.resolve("10.0.0.1", parsedDc = 26369, parsedMedia = true)
+        assertEquals(TelegramDCs.DEFAULT_DC, junk.dc)
+        assertEquals(2, junk.dc)
+    }
+
+    /// rewriteDc правит dc_idx прямо в шифртексте: XOR с тем же байтом
+    /// keystream. Ошибка здесь молча ломает шифрпоток MTProto, поэтому
+    /// проверяем и сам факт подмены, и что key/iv остались нетронутыми.
+    @Test
+    fun `rewriteDc changes only dc bytes and keeps key iv`() {
+        val init = buildInit(dcIdx = 26369.toShort(), protoTag = 0xDDDDDDDDL.toInt(), seed = 11)
+        val parsed = InitParser.parse(init)!!
+        assertEquals(26369, parsed.dcId)
+
+        val fixed = InitParser.rewriteDc(init, parsed.key, parsed.iv, dc = 2)
+
+        // Размер и всё, кроме [60:62], не изменились — включая key и iv.
+        assertEquals(init.size, fixed.size)
+        assertArrayEquals(init.copyOfRange(8, 56), fixed.copyOfRange(8, 56))
+        for (i in init.indices) {
+            if (i == 60 || i == 61) continue
+            assertEquals("byte $i must not change", init[i], fixed[i])
+        }
+        assertEquals(2, InitParser.parse(fixed)!!.dcId)
+
+        // Исходный массив не мутирован — сплиттер строится из того же initBuffer.
+        assertEquals(26369, InitParser.parse(init)!!.dcId)
+    }
+
+    @Test
+    fun `rewriteDc round-trips every DC and prototag`() {
+        val tags = listOf(0xEFEFEFEFL.toInt(), 0xEEEEEEEEL.toInt(), 0xDDDDDDDDL.toInt())
+        for (tag in tags) {
+            for (dc in 1..5) {
+                val init = buildInit(dcIdx = 7.toShort(), protoTag = tag, seed = dc.toLong())
+                val parsed = InitParser.parse(init)!!
+                val fixed = InitParser.rewriteDc(init, parsed.key, parsed.iv, dc)
+                val back = InitParser.parse(fixed)!!
+                assertEquals("dc=$dc tag=$tag", dc, back.dcId)
+                assertEquals("protoTag must survive", parsed.protoTag, back.protoTag)
+                assertEquals(false, back.isMedia)
+            }
+        }
+    }
 }
