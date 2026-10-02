@@ -52,10 +52,30 @@ class WSClient(private val tag: String = "") {
             Thread(r, "ws-timer").apply { isDaemon = true }
         }
 
-        /// Прямые IP kws-гейтвеев. .220 — дефолт десктопного tg-ws-proxy (рабочий),
-        /// .205 — альтернатива из их доков, .99/.174.100 — текущие ответы DNS.
-        private val gatewayIPs = listOf(
-            "149.154.167.220", "149.154.175.205", "149.154.167.99", "149.154.174.100",
+        /// Прямые IP kws-гейтвеев, для которых ДОКАЗАНО, что они обслуживают DC.
+        /// .220 — дефолт десктопного tg-ws-proxy (совпадает с dc_redirects
+        /// апстрима: {2: .220, 4: .220}). Проверено замером TLS и живым
+        /// журналом: сертификат валиден для kws2/kws4 и НЕ валиден для
+        /// kws1/kws3/kws5 — SAN *.telegram.org покрывает один уровень, а не
+        /// kwsNNN.web.telegram.org. Гейтвей выбирает сертификат по SNI, а
+        /// OkHttp берёт SNI из URL, поэтому для DC1/3/5 .220 недостижим в
+        /// принципе, а не «пока не ожил».
+        ///
+        /// Для DC1/DC3/DC5 прямого адреса нет. Их домены резолвятся в TG-диапазон
+        /// (kws1/kws3 -> 149.154.174.100, kws5 -> 149.154.170.100), который в
+        /// проверенной сети не отвечает; туда ведёт kws{dc}.web.telegram.org в
+        /// конце каскада. Добавлять сюда IP стоит только с подтверждением, что
+        /// он живой И что сертификат покрывает нужный SNI.
+        ///
+        /// Зачем вообще ограничивать: .220 первым для чужого DC — это гарантированный
+        /// провал TLS. Он дешёвый (сертификат отваливается сразу, без ожидания
+        /// таймаута), но в журнале тестера давал ложную картину «DC1 не работает»
+        /// и лишние ws_err на каждое переподключение: c7:DC1 -> .220 -> not verified.
+        /// Адреса .99 и .174.100 сюда не нужны: их и так возвращает DNS для
+        /// kws{dc}.web.telegram.org, то есть доменный эндпоинт их покрывает.
+        private val dcGatewayIps = mapOf(
+            2 to listOf("149.154.167.220"),
+            4 to listOf("149.154.167.220"),
         )
 
         private var rrStart = 0
@@ -125,10 +145,11 @@ class WSClient(private val tag: String = "") {
         rrStart = (rrStart + 1) % fronts.size
         val rotated = fronts.subList(rrStart, fronts.size) + fronts.subList(0, rrStart)
 
-        // Прямые IP идут ПЕРВЫМИ: они не требуют DNS и работают даже когда
-        // все доменные фронты отравлены/заблокированы. CF-фронты — вторыми
-        // (на LTE они быстрее, но только если DNS жив). Fallback домен — последний.
-        val directEps = gatewayIPs.map { Endpoint(gwHost, it) }
+        // Порядок: прямые IP, обслуживающие ЭТОТ DC (без DNS, работают при
+        // отравленных доменах) → живые CF-фронты → kws{dc}.web.telegram.org.
+        // Для чужого DC прямой IP не даёт даже TLS: сертификат не покрывает
+        // kws{dc} (см. dcGatewayIps) — эндпоинт мёртв по построению.
+        val directEps = (dcGatewayIps[dc] ?: emptyList()).map { Endpoint(gwHost, it) }
         val domainEps = rotated.take(6).map { Endpoint(it, null) } + Endpoint(gwHost, null)
 
         // aliveOnly фильтрует ТОЛЬКО доменные эндпоинты: прямые IP не зависят
@@ -136,7 +157,7 @@ class WSClient(private val tag: String = "") {
         val healthyDomains = aliveOnly(domainEps)
         val endpoints = directEps + healthyDomains.ifEmpty { domainEps }
 
-        post("cascade:${endpoints.size}ep")
+        post("cascade:dc=$dc:${endpoints.size}ep")
         tryConnect(endpoints, path, 0, initFrame, onMessage, onClose)
     }
 

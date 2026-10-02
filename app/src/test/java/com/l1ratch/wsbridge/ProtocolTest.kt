@@ -212,6 +212,28 @@ class ProtocolTest {
         assertTrue("test IP must route to /apiws_test", d.isTest)
     }
 
+    /// Адреса, на которые Telegram реально ходит по журналу тестера. Без записи
+    /// в таблице они угадывались как DC2, и сессия DC4 попадала на kws2.
+    @Test
+    fun `resolve knows addresses seen in the field`() {
+        assertEquals(4, TelegramDCs.resolve("149.154.165.136", 0, false).dc) // DC4
+        assertEquals(1, TelegramDCs.resolve("149.154.175.58", 0, false).dc)  // DC1
+        assertEquals(2, TelegramDCs.resolve("149.154.167.151", 0, false).dc) // DC2
+        assertEquals(1, TelegramDCs.resolve("149.154.175.53", 0, false).dc)  // DC1
+        assertEquals(4, TelegramDCs.resolve("149.154.167.91", 0, false).dc)  // DC4
+    }
+
+    /// DC203 (CDN) не имеет kws-хоста: kws203.web.telegram.org не существует.
+    /// Апстрим приводит его к DC2 (tg-ws-proxy utils.ws_domains).
+    @Test
+    fun `normalize maps CDN dc to dc2`() {
+        assertEquals(2, TelegramDCs.normalize(203))
+        assertEquals(3, TelegramDCs.normalize(3))
+        val cdn = TelegramDCs.resolve("91.105.192.100", 0, false)
+        assertEquals(2, cdn.dc)
+        assertEquals(false, cdn.isTest)
+    }
+
     @Test
     fun `resolve falls back to sane parsed DC then default`() {
         // Неизвестный адрес + правдоподобный DC из init — берём init.

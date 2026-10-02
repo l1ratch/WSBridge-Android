@@ -22,19 +22,37 @@ object TelegramDCs {
     /// (NXDOMAIN) и провал проверки сертификата. iOS (MtProtoKit) пишет
     /// dc_idx всегда, поэтому iOS-порт работал без этой таблицы.
     ///
-    /// Источники: BuiltInDc в DrKLO/Telegram (ConnectionsManager.cpp),
-    /// core.telegram.org и dc_probe.py из iOS-репы (.41 — «мастер телефона»).
+    /// Таблица сверена с реальным ответом `help.getConfig` с серверов Telegram
+    /// (dc_options) и со списками адресов из gogram/telego/mtproto. Адреса
+    /// .165.136 (DC4) и .175.58 (DC1) особенно важны: клиент реально ходит на
+    /// них, а без записи в таблице они угадывались как DC2 — и сессия,
+    /// которой нужен DC4, попадала на kws2, после чего рвалась и переподключалась.
     private val dcByIp = mapOf(
+        // DC1
         "149.154.175.50" to 1,
+        "149.154.175.58" to 1,
         "149.154.175.53" to 1,
-        "149.154.167.51" to 2,
+        // DC2
+        "149.154.167.222" to 2,
         "149.154.167.41" to 2,
+        "149.154.167.50" to 2,
+        "149.154.167.51" to 2,
         "149.154.167.151" to 2,
         "95.161.76.100" to 2,
+        // DC3
         "149.154.175.100" to 3,
+        // DC4
+        "149.154.165.136" to 4,
         "149.154.167.91" to 4,
-        "149.154.171.5" to 5,
+        "149.154.167.92" to 4,
+        // DC5
+        "91.108.56.121" to 5,
         "91.108.56.130" to 5,
+        "91.108.56.151" to 5,
+        "91.108.56.156" to 5,
+        "149.154.171.5" to 5,
+        // DC203
+        "91.105.192.100" to 203,
     )
 
     /// Тестовый контур: другой путь (/apiws_test) и другие DC.
@@ -69,6 +87,10 @@ object TelegramDCs {
     /// на Android его не несёт; `parsedDc` из init используется только как
     /// резерв, когда IP не опознан, и только если он правдоподобен (1..5).
     ///
+    /// DC203 приведён к DC2: kws203.web.telegram.org не существует, и гейтвей
+    /// для него — тот же, что у DC2. Так же поступает апстрим tg-ws-proxy
+    /// (utils.ws_domains: `if dc == 203: dc = 2`).
+    ///
     /// ponytail: media-флаг по IP не выводится — media-DC живут на тех же
     /// адресах, а знак dc_idx в init случайный. Media-сессия уйдёт обычным
     /// путём (kws{dc}, не kws{dc}-1): загрузки медленнее, но не ломаются.
@@ -76,9 +98,13 @@ object TelegramDCs {
     fun resolve(dstIp: String, parsedDc: Int, parsedMedia: Boolean): DcChoice {
         val ipDc = dcForIp(dstIp)
         if (ipDc != null) {
-            return DcChoice(ipDc, isTestIp(dstIp), isMedia = false, fromIp = true)
+            return DcChoice(normalize(ipDc), isTestIp(dstIp), isMedia = false, fromIp = true)
         }
         val saneParsed = parsedDc.takeIf { it in 1..5 } ?: DEFAULT_DC
-        return DcChoice(saneParsed, isTest = false, isMedia = parsedMedia, fromIp = false)
+        return DcChoice(normalize(saneParsed), isTest = false, isMedia = parsedMedia, fromIp = false)
     }
+
+    /// DC, для которого реально существует kws-хост. 203 (CDN) обслуживается
+    /// гейтвеем DC2.
+    fun normalize(dc: Int): Int = if (dc == 203) 2 else dc
 }
