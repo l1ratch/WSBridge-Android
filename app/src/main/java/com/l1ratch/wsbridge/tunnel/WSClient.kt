@@ -32,7 +32,17 @@ import java.util.concurrent.atomic.AtomicBoolean
 class WSClient(private val tag: String = "") {
 
     companion object {
+        /// Системный DNS-резолвер: InetAddress.getAllByName использует системный
+        /// резолвер, который для disallowed-приложения идёт мимо VPN. Без этого
+        /// OkHttp внутри VpnService-процесса может получить VPN-сеть как active
+        /// network и DNS-запросы уйдут в TUN (где lwIP без UDP их потеряет).
+        private val systemDns = object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> =
+                InetAddress.getAllByName(hostname).toList()
+        }
+
         private val client: OkHttpClient = OkHttpClient.Builder()
+            .dns(systemDns)
             .pingInterval(20, TimeUnit.SECONDS) // гейтвей не должен рвать молчащий WS
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS) // WS живёт долго; таймаутами управляет каскад
@@ -95,10 +105,10 @@ class WSClient(private val tag: String = "") {
         EventLog.append(if (tag.isEmpty()) name else "$tag:$name")
     }
 
-    /// Подключается к kws-гейтвею. Порядок: CF-фронты (ротация старта) → прямые
-    /// IP гейтвеев → kws{dc}.web.telegram.org. Фронты первыми: на LTE они
-    /// единственные дают мгновенный 101 (TG-диапазон 149.154.* сотовые
-    /// операторы блокируют на L4, а CF — нет).
+    /// Подключается к kws-гейтвею. Порядок: прямые IP гейтвеев → CF-фронты
+    /// (ротация старта) → kws{dc}.web.telegram.org. Прямые IP первыми: они не
+    /// требуют DNS и работают даже при полном отравлении доменов. CF-фронты
+    /// быстрее на LTE, но только если DNS жив; идут вторыми.
     /// initFrame (64-байтовый MTProto init) шлётся первым фреймом на КАЖДОМ
     /// эндпоинте каскада — при failover старый socket со своим init выбрасывается.
     fun connect(
@@ -115,13 +125,19 @@ class WSClient(private val tag: String = "") {
         rrStart = (rrStart + 1) % fronts.size
         val rotated = fronts.subList(rrStart, fronts.size) + fronts.subList(0, rrStart)
 
-        val endpoints = mutableListOf<Endpoint>()
-        rotated.take(6).forEach { endpoints.add(Endpoint(it, null)) }
-        gatewayIPs.forEach { endpoints.add(Endpoint(gwHost, it)) }
-        endpoints.add(Endpoint(gwHost, null))
+        // Прямые IP идут ПЕРВЫМИ: они не требуют DNS и работают даже когда
+        // все доменные фронты отравлены/заблокированы. CF-фронты — вторыми
+        // (на LTE они быстрее, но только если DNS жив). Fallback домен — последний.
+        val directEps = gatewayIPs.map { Endpoint(gwHost, it) }
+        val domainEps = rotated.take(6).map { Endpoint(it, null) } + Endpoint(gwHost, null)
 
-        val healthy = aliveOnly(endpoints)
-        tryConnect(healthy.ifEmpty { endpoints }, path, 0, initFrame, onMessage, onClose)
+        // aliveOnly фильтрует ТОЛЬКО доменные эндпоинты: прямые IP не зависят
+        // от DNS и не должны исключаться из-за DNS-ошибок других сессий.
+        val healthyDomains = aliveOnly(domainEps)
+        val endpoints = directEps + healthyDomains.ifEmpty { domainEps }
+
+        post("cascade:${endpoints.size}ep")
+        tryConnect(endpoints, path, 0, initFrame, onMessage, onClose)
     }
 
     private fun tryConnect(
