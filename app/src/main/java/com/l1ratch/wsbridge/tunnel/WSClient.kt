@@ -146,16 +146,22 @@ class WSClient(private val tag: String = "") {
         val rotated = fronts.subList(rrStart, fronts.size) + fronts.subList(0, rrStart)
 
         // Порядок: прямые IP, обслуживающие ЭТОТ DC (без DNS, работают при
-        // отравленных доменах) → живые CF-фронты → kws{dc}.web.telegram.org.
+        // отравленных доменах) → CF-фронты (ротация старта) → kws{dc}.web.telegram.org.
         // Для чужого DC прямой IP не даёт даже TLS: сертификат не покрывает
         // kws{dc} (см. dcGatewayIps) — эндпоинт мёртв по построению.
         val directEps = (dcGatewayIps[dc] ?: emptyList()).map { Endpoint(gwHost, it) }
         val domainEps = rotated.take(6).map { Endpoint(it, null) } + Endpoint(gwHost, null)
 
-        // aliveOnly фильтрует ТОЛЬКО доменные эндпоинты: прямые IP не зависят
-        // от DNS и не должны исключаться из-за DNS-ошибок других сессий.
-        val healthyDomains = aliveOnly(domainEps)
-        val endpoints = directEps + healthyDomains.ifEmpty { domainEps }
+        // Кэш здоровья фильтрует ВСЕ эндпоинты, включая прямые IP. Раньше
+        // прямые были освобождены от него «чтобы не зависеть от DNS» — но
+        // побочный эффект оказался хуже: когда гейтвей .220 умер (журнал
+        // 11:12: .220 давал ws_up мгновенно, через 10 часов — таймаут 5с),
+        // он НЕ помечался dead и каждая новая сессия снова начинала с него.
+        // Клиент сдаётся через 8с и не доходит до живых CF-фронтов.
+        // Очистка кэша при «все dead» (ifEmpty) гарантирует, что ничего не
+        // теряется: все эндпоинты пробуются по кругу.
+        val healthy = aliveOnly(directEps + domainEps)
+        val endpoints = healthy.ifEmpty { directEps + domainEps }
 
         post("cascade:dc=$dc:${endpoints.size}ep")
         tryConnect(endpoints, path, 0, initFrame, onMessage, onClose)
