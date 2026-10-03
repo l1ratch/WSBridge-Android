@@ -9,7 +9,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,7 +54,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -117,9 +115,7 @@ class MainActivity : ComponentActivity() {
 private val Green = Color(0xFF17A05E)
 private val Indigo = Color(0xFF1E3A6E)
 private val BottomDark = Color(0xFF040810)
-private val BottomLight = Color(0xFFD5DAE4)
 private val DarkBg = Color(0xFF0D1526)
-private val LightBg = Color(0xFFE8EDF5)
 
 /// Радиус Brush.radialGradient задаётся в пикселях, а не в dp.
 @Composable
@@ -127,11 +123,9 @@ private fun px(dp: Dp): Float = with(LocalDensity.current) { dp.toPx() }
 
 @Composable
 fun App(onToggle: () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    MaterialTheme(
-        colorScheme = if (dark) darkColorScheme(background = DarkBg, surface = DarkBg)
-        else lightColorScheme(background = LightBg, surface = LightBg)
-    ) {
+    // Только тёмная тема (как на iOS): светлую отключили — автоадаптация
+    // давала блёклые экраны, а градиенты под светлую ломали контраст.
+    MaterialTheme(colorScheme = darkColorScheme(background = DarkBg, surface = DarkBg)) {
         var screen by remember { mutableStateOf<Any>("main") }
         when (screen) {
             "main" -> MainScreen(onToggle = onToggle, navigate = { screen = it })
@@ -149,12 +143,11 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
     val running = TunnelManager.running
     var showMenu by remember { mutableStateOf(false) }
     var showDns by remember { mutableStateOf(false) }
-    val dark = isSystemInDarkTheme()
 
     // Фон рисуем явно: Scaffold прозрачный (иначе перекроет свечения), а окно
-    // в XML-теме чёрное — без этой заливки светлая тема даёт чёрный экран с
-    // невидимым тёмным текстом.
-    Box(Modifier.fillMaxSize().background(if (dark) DarkBg else LightBg)) {
+    // в XML-теме чёрное — без этой заливки светлая тема давала чёрный экран.
+    // Тема всегда тёмная (см. App).
+    Box(Modifier.fillMaxSize().background(DarkBg)) {
         // Верхнее свечение (порт ContentView.swift): зелёное при работе, индиго в покое.
         // Радиальный градиент вместо Modifier.blur — тот же вид, без дорогого размытия.
         Box(
@@ -165,14 +158,14 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
                 .background(
                     Brush.radialGradient(
                         listOf(
-                            (if (running) Green else Indigo).copy(alpha = if (dark) 0.55f else 0.45f),
+                            (if (running) Green else Indigo).copy(alpha = 0.55f),
                             Color.Transparent,
                         ),
                         radius = px(300.dp),
                     )
                 )
         )
-        // Нижняя глубина: тёмная тема — почти чёрный, светлая — тёплый серый.
+        // Нижняя глубина: почти чёрный, держит низ экрана спокойным.
         Box(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -181,7 +174,7 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
                 .background(
                     Brush.radialGradient(
                         listOf(
-                            (if (dark) BottomDark else BottomLight).copy(alpha = if (dark) 0.85f else 0.6f),
+                            BottomDark.copy(alpha = 0.85f),
                             Color.Transparent,
                         ),
                         radius = px(340.dp),
@@ -239,16 +232,30 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
+                    // Заголовок — экран без него выглядел безымянным.
+                    Text(
+                        "WSBridge",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f),
+                    )
+                    Spacer(Modifier.height(28.dp))
                     BoltButton(running, onToggle)
                     Spacer(Modifier.height(20.dp))
+                    // Статус словами: что произойдёт по тапу.
+                    Text(
+                        if (running) "Туннель активен" else "Туннель выключен",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (running) Green else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    )
+                    Spacer(Modifier.height(24.dp))
                     DnsPill { showDns = true }
                 }
 
-                // Версия — по нижнему краю, как на iOS, а не в середине колонки.
+                // Версия — по нижнему краю, как на iOS.
                 Text(
                     "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · © 2026 l1ratch",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                 )
             }
@@ -269,7 +276,9 @@ private fun BoltButton(running: Boolean, onToggle: () -> Unit) {
             .background(
                 Brush.radialGradient(
                     listOf(
-                        (if (running) Green else Color.Gray).copy(alpha = if (running) 0.35f else 0.10f),
+                        // В покое — приглушённый индиго (не серый: серый читался
+                        // как «сломано»), при работе — зелёное свечение.
+                        (if (running) Green else Indigo).copy(alpha = if (running) 0.35f else 0.16f),
                         Color.Transparent,
                     ),
                     radius = px(120.dp),
@@ -281,7 +290,7 @@ private fun BoltButton(running: Boolean, onToggle: () -> Unit) {
         Icon(
             Icons.Default.Bolt,
             contentDescription = if (running) "Выключить туннель" else "Включить туннель",
-            tint = if (running) Green else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+            tint = if (running) Green else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
             modifier = Modifier.size(170.dp),
         )
     }
