@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
@@ -43,6 +42,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -193,10 +193,19 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
                     title = { },
                     actions = {
                         // Меню якоряется на коробке вокруг кнопки, иначе popup
-                        // открывается от левого края, а не под ⋮.
+                        // открывается от левого края, а не под кнопкой.
+                        // Пузырь-кнопка (FilledIconButton) вместо голых «⋮»:
+                        // три точки были еле заметны на градиенте.
                         Box {
-                            IconButton(onClick = { showMenu = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "Меню")
+                            FilledIconButton(
+                                onClick = { showMenu = true },
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = "Меню",
+                                    modifier = Modifier.size(26.dp),
+                                )
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                 DropdownMenuItem(
@@ -232,22 +241,8 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    // Заголовок — экран без него выглядел безымянным.
-                    Text(
-                        "WSBridge",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f),
-                    )
-                    Spacer(Modifier.height(28.dp))
                     BoltButton(running, onToggle)
                     Spacer(Modifier.height(20.dp))
-                    // Статус словами: что произойдёт по тапу.
-                    Text(
-                        if (running) "Туннель активен" else "Туннель выключен",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (running) Green else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                    )
-                    Spacer(Modifier.height(24.dp))
                     DnsPill { showDns = true }
                 }
 
