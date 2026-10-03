@@ -10,6 +10,8 @@ Android-порт [WSBridge-iOS](https://github.com/l1ratch/WSBridge-iOS): тот
 
 Скачай APK из [Releases](https://github.com/l1ratch/WSBridge-Android/releases) и поставь напрямую. Дев-сборка с последнего пуша в main — в prerelease `preview`.
 
+Все сборки подписаны одним ключом, `versionCode` растёт с каждым прогоном CI — новая версия ставится **поверх** установленной, удалять старую не нужно. (Первый переход со старых debug-сборок потребует одного удаления — их подпись была случайной.)
+
 ## Как это работает
 
 Приложение поднимает локальный VPN (VpnService) с маршрутами только на диапазоны Telegram (`149.154.0.0/16`, `91.108.0.0/16`, `91.105.192.0/24`). TCP-трафик восстанавливается в поток через lwIP (NO_SYS=1, вендор 2.2.0), парсится 64-байтный MTProto init, и каждый MTProto-пакет уходит отдельным WS-фреймом через каскад: ротационные CF-фронты `kws{dc}.*` → прямые IP гейтвеев → `kws{dc}.web.telegram.org`.
@@ -28,7 +30,7 @@ Android-порт [WSBridge-iOS](https://github.com/l1ratch/WSBridge-iOS): тот
 
 Нужны: JDK 17+, Android SDK 36, NDK 27+, CMake. Нативная часть — lwIP 2.2.0 + JNI-мост (`app/src/main/cpp/`), собирается через externalNativeBuild.
 
-CI собирает debug APK при пуше в `main` (prerelease `preview`) и релизный APK при пуше тега `v*` (GitHub Releases). Подпись релиза — секреты `RELEASE_KEYSTORE_B64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`; без них релиз подписывается debug-ключом.
+CI при пуше в `main` собирает подписанный APK (prerelease `preview`) и релизный APK при пуше тега `v*` (GitHub Releases). Подпись — секреты `RELEASE_KEYSTORE_B64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`; стабильный ключ гарантирует, что обновление ставится поверх без удаления. `versionCode` = номер прогона CI (`BUILD_NUMBER`).
 
 ## Отличия от iOS-версии
 

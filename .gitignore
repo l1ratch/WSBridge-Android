@@ -14,3 +14,4 @@ captures/
 ref/
 compile_error.txt
 .acl-recovery/
+*.keystore

@@ -29,13 +29,24 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Unit tests + Build debug APK
-        run: ./gradlew testDebugUnitTest assembleDebug --stacktrace
+      - name: Unit tests + Build APK
+        env:
+          # Стабильная подпись: APK подписывается одним ключом из секретов,
+          # поэтому новая сборка ставится ПОВЕРХ старой без удаления. Версия
+          # берётся из номера прогона CI — всегда растёт.
+          BUILD_NUMBER: ${{ github.run_number }}
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          ./gradlew testDebugUnitTest --stacktrace
+          ./gradlew assembleRelease --stacktrace
 
       - name: Prepare artifact
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/*.apk dist/WSBridge-debug.apk
+          cp app/build/outputs/apk/release/*.apk dist/WSBridge.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -44,6 +55,8 @@ jobs:
           if-no-files-found: error
 
       # Каждый пуш в main обновляет prerelease "preview" (как в WSBridge-iOS).
+      # APK подписан стабильным ключом и имеет растущий versionCode —
+      # ставится поверх установленной версии без удаления.
       - name: Update preview release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -51,7 +64,7 @@ jobs:
           gh release delete preview --yes 2>/dev/null || true
           git push origin :refs/tags/preview 2>/dev/null || true
           gh release create preview \
-            dist/WSBridge-debug.apk \
+            dist/WSBridge.apk \
             --title "Preview (latest main)" \
             --notes "Дев-сборка с последнего пуша в main. Для стабильных версий — Releases." \
             --prerelease
