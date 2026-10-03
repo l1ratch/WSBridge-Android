@@ -49,6 +49,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -76,8 +77,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.l1ratch.wsbridge.tunnel.CFDomains
+import com.l1ratch.wsbridge.tunnel.FrontsUpdater
 import com.l1ratch.wsbridge.tunnel.TunnelService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /// Главный экран: молния-кнопка (порт ContentView.swift) + меню.
 class MainActivity : ComponentActivity() {
@@ -89,7 +97,17 @@ class MainActivity : ComponentActivity() {
     private fun launchTunnel() {
         val intent = Intent(this, TunnelService::class.java).setAction(TunnelService.ACTION_START)
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
+        // Авто-чек фронтов ПОСЛЕ startService (не до — гонка с записью настроек
+        // во время старта). Rate-limit 30 мин; применяется при следующем
+        // включении, не в текущей сессии.
+        if (FrontsUpdater.shouldAutoUpdate()) {
+            scope.launch {
+                FrontsUpdater.update()
+            }
+        }
     }
+
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private fun stopTunnel() {
         startService(Intent(this, TunnelService::class.java).setAction(TunnelService.ACTION_STOP))
@@ -98,7 +116,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         TunnelManager.init(this)
+        FrontsUpdater.init(this)
         setContent { App(onToggle = ::toggle) }
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
     }
 
     private fun toggle() {
@@ -143,6 +167,22 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
     val running = TunnelManager.running
     var showMenu by remember { mutableStateOf(false) }
     var showDns by remember { mutableStateOf(false) }
+    // Ручное обновление фронтов: null = не идёт, "run" = качает, "ok:N"/"err" = итог.
+    var frontsStatus by remember { mutableStateOf<String?>(null) }
+
+    // Клик меню ставит "run" → этот эффект один раз скачивает и пишет итог.
+    LaunchedEffect(frontsStatus) {
+        when (frontsStatus) {
+            "run" -> {
+                val ok = FrontsUpdater.update()
+                frontsStatus = if (ok) "ok:${CFDomains.size}" else "err"
+            }
+            "err" -> { delay(3500); frontsStatus = null }
+            else -> if (frontsStatus?.startsWith("ok") == true) {
+                delay(3500); frontsStatus = null
+            }
+        }
+    }
 
     // Фон рисуем явно: Scaffold прозрачный (иначе перекроет свечения), а окно
     // в XML-теме чёрное — без этой заливки светлая тема давала чёрный экран.
@@ -224,6 +264,14 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
                                     onClick = { showMenu = false; navigate("worker") },
                                 )
                                 DropdownMenuItem(
+                                    text = { Text("Обновить фронты (${CFDomains.size})") },
+                                    leadingIcon = { Icon(Icons.Default.Refresh, null) },
+                                    onClick = {
+                                        showMenu = false
+                                        if (frontsStatus == null) frontsStatus = "run"
+                                    },
+                                )
+                                DropdownMenuItem(
                                     text = { Text("О программе") },
                                     leadingIcon = { Icon(Icons.Default.Info, null) },
                                     onClick = { showMenu = false; navigate("about") },
@@ -258,6 +306,17 @@ private fun MainScreen(onToggle: () -> Unit, navigate: (String) -> Unit) {
     }
 
     if (showDns) DnsSheet(onDismiss = { showDns = false }, navigate = navigate)
+
+    // Статус обновления фронтов: поверх всего, автоскрытие — в LaunchedEffect.
+    frontsStatus?.let { st ->
+        val msg = when {
+            st == "run" -> "Обновление списка фронтов…"
+            st == "err" -> "Не удалось обновить (сеть?). Встроенный список активен."
+            st.startsWith("ok") -> "Фронты обновлены: ${st.removePrefix("ok:")} доменов"
+            else -> st
+        }
+        Snackbar { Text(msg) }
+    }
 }
 
 /// Молния — и индикатор, и кнопка. Ореол сделан радиальным градиентом, а не

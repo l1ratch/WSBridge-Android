@@ -141,6 +141,11 @@ class TunnelService : VpnService() {
         EventLog.reset()
         EventLog.append("cfg:worker=${workerDomain ?: "-"}")
         EventLog.append("tunnel_start v${BuildConfig.VERSION_NAME}")
+        // Скачанные фронты применяются при каждом старте туннеля. FrontsUpdater
+        // уже читает prefs при init — здесь страховка на случай, если сервис
+        // поднялся раньше Activity (автозапуск, рестарт системы).
+        FrontsUpdater.init(applicationContext)
+        EventLog.append("fronts:${CFDomains.size}d")
         TunnelManager.updateRunning(true)
 
         lwipExecutor = Executors.newSingleThreadScheduledExecutor { r ->
