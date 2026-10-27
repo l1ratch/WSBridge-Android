@@ -92,3 +92,33 @@ jobs:
             --title "Preview (latest main)" \
             --notes "Дев-сборка с последнего пуша в main: ${{ steps.ver.outputs.version }} (code ${{ steps.ver.outputs.code }}). Для стабильных версий — Releases." \
             --prerelease
+
+      # ── Авто-бамп последней цифры (гибкое версионирование) ──────────
+      # Политика: X.X — блок версии, последняя цифра — номер превью-сборки,
+      # и её двигает САМ CI после каждой успешной preview. Человек руками
+      # трогает только X.X (новый блок) и релизный тег: завершённой версию
+      # делает тег v*, а release.yml сверяет тег с wsb.version и не даёт
+      # выпустить релиз с code ниже опубликованного preview.
+      #
+      # Коммит пушится GITHUB_TOKEN'ом: пуши этим токеном не триггерят
+      # workflows, поэтому цикла «сборка → бамп → сборка» не возникает.
+      # Перед бампом синхронизируемся с origin/main: если параллельная
+      # сборка уже успела поднять цифру, считаем от неё, а не от своей
+      # устаревшей версии (иначе пуш лёг бы non-fast-forward).
+      - name: Bump build digit for next preview
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          CURRENT=$(grep -E '^[[:space:]]*wsb\.version[[:space:]]*=' gradle.properties | tail -n 1 | cut -d= -f2 | tr -d '[:space:]')
+          IFS='.' read -r MAJ MIN PAT <<< "$CURRENT"
+          NEXT="$MAJ.$MIN.$((PAT + 1))"
+          sed -i -E "s|^[[:space:]]*wsb\.version[[:space:]]*=.*|wsb.version=$NEXT|" gradle.properties
+          git config user.name "wsb-ci"
+          git config user.email "wsb-ci@users.noreply.github.com"
+          git add gradle.properties
+          git commit -m "chore: bump build digit to $NEXT after preview $VERSION"
+          git push origin HEAD:refs/heads/main
+          echo "next preview will build as $NEXT"
